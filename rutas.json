@@ -1,0 +1,12 @@
+[
+  {
+    "id": "CABA-EZE",
+    "nombre": "CABA → Ezeiza (EZE)",
+    "url": "https://www.uber.com/global/es/r/routes/capital-federal-ciudad-autonomade-buenos-aires-ar-to-ezeiza-buenos-aires-ar/"
+  },
+  {
+    "id": "CABA-AEP",
+    "nombre": "CABA → Aeroparque (AEP)",
+    "url": null
+  }
+]

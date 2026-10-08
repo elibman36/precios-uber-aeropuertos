@@ -1,0 +1,7 @@
+{
+  "name": "precios-uber-aeropuertos",
+  "private": true,
+  "type": "module",
+  "scripts": { "scrape": "node scrape.mjs" },
+  "dependencies": { "playwright": "1.48.2" }
+}
