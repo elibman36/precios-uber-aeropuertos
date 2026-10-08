@@ -7,11 +7,10 @@ const RUTAS = JSON.parse(fs.readFileSync('rutas.json', 'utf8'));
 const CSV = 'data/precios.csv';
 const DEBUG_DIR = 'debug';
 
-// Nombres de productos de Uber en Argentina (para asociar cada precio a su producto)
-const PRODUCTOS = /^(Uber\s?X|UberX|Comfort|Uber\s?Comfort|Black|Uber\s?Black|XL|Uber\s?XL|Flash|Uber\s?Flash|Moto|Uber\s?Moto|Planet|Uber\s?Planet|Pet|Uber\s?Pet|Taxi|Uber\s?Taxi|Premier|Green|Uber\s?Green|Van|Priority|Prioridad|Ahorro|Espera y ahorra|Wait and save)\b/i;
-
-// "ARS 25.000", "$25.000 - $32.000", "ARS 25.000–32.000", "ARS25,000"
+// "$34172*", "$ 25.000", "ARS 25.000-32.000"
 const PRECIO = /(ARS|\$)\s?([\d.,]+)(?:\s?[-–]\s?(?:ARS|\$)?\s?([\d.,]+))?/;
+// Líneas que no son nombre de producto: asientos ("4"), rating ("4.9"), rótulos sueltos
+const NO_NOMBRE = /^(\d+([.,]\d+)?|Precio promedio)$/i;
 
 // Formato argentino: "25.000" → 25000, "25.000,50" → 25000.5; también tolera "25,000"
 function numero(txt) {
@@ -26,34 +25,43 @@ function csvCampo(v) {
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-// Recorre el texto visible línea por línea: cada precio se asocia al último producto visto.
+// La página de ruta de Uber muestra cada producto como:
+//   UberX | 4 (asientos) | 4.9 (rating) | $34172* | descripción
+// y arriba un resumen: "Tarifa promedia de la ruta | $32972", "Tiempo promedio de viaje | 45 minutos".
 function extraerPrecios(texto) {
   const lineas = texto.split('\n').map(l => l.trim()).filter(Boolean);
+  const valorDe = re => {
+    const i = lineas.findIndex(l => re.test(l));
+    return i >= 0 && lineas[i + 1] ? numero((lineas[i + 1].match(/[\d.,]+/) || [])[0]) : '';
+  };
+  const resumen = {
+    tiempo_min: valorDe(/^Tiempo promedio/i),
+    distancia_km: valorDe(/^Distancia promedio/i),
+  };
   const filas = [];
-  let producto = '';
   lineas.forEach((linea, i) => {
-    if (PRODUCTOS.test(linea) && linea.length < 40) producto = linea;
     const m = linea.match(PRECIO);
-    if (!m) return;
-    const min = numero(m[2]);
-    if (min === '' || min < 1000) return; // descarta números sueltos que no son tarifas
-    filas.push({
-      producto: producto || '(sin producto)',
-      precio_min: min,
-      precio_max: numero(m[3]) || min,
-      moneda: 'ARS',
-      texto: linea.slice(0, 120),
-      contexto: lineas.slice(Math.max(0, i - 3), i + 2).join(' | '),
-    });
+    if (!m || m.index > 2) return; // el precio va al principio de la línea
+    const precio = numero(m[2]);
+    if (precio === '' || precio < 1000) return;
+    let j = i - 1;
+    while (j >= 0 && (NO_NOMBRE.test(lineas[j]) || PRECIO.test(lineas[j]))) j--;
+    let producto = j >= 0 ? lineas[j] : '(sin nombre)';
+    if (/^Tarifa promedi/i.test(producto)) producto = 'Promedio de la ruta';
+    filas.push({ producto: producto.slice(0, 40), precio, precio_max: numero(m[3]) || precio,
+                 contexto: lineas.slice(Math.max(0, i - 3), i + 2).join(' | ') });
   });
   // Uber a veces repite el mismo bloque (mobile/desktop): deduplicar
   const vistas = new Set();
-  return filas.filter(f => {
-    const k = `${f.producto}|${f.precio_min}|${f.precio_max}`;
-    if (vistas.has(k)) return false;
-    vistas.add(k);
-    return true;
-  });
+  return {
+    resumen,
+    filas: filas.filter(f => {
+      const k = `${f.producto}|${f.precio}`;
+      if (vistas.has(k)) return false;
+      vistas.add(k);
+      return true;
+    }),
+  };
 }
 
 const ahora = new Date();
@@ -74,15 +82,28 @@ const linksRutas = new Set();
 let fallas = 0;
 
 for (const ruta of RUTAS) {
-  if (!ruta.url) {
+  const urls = [].concat(ruta.url || []);
+  if (!urls.length) {
     console.log(`\n== ${ruta.id}: sin URL configurada, se busca en los links de las otras páginas`);
     continue;
   }
-  console.log(`\n== ${ruta.id}: ${ruta.url}`);
-  const page = await context.newPage();
+  let page;
   try {
-    const resp = await page.goto(ruta.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    console.log(`HTTP ${resp?.status()} · título: ${await page.title()}`);
+    // "url" puede ser una lista: se usa la primera que responde con una página de ruta
+    let ok = false;
+    for (const url of urls) {
+      console.log(`\n== ${ruta.id}: ${url}`);
+      await page?.close();
+      page = await context.newPage(); // página nueva por intento: un error no contamina el siguiente
+      try {
+        const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        console.log(`HTTP ${resp?.status()} · título: ${await page.title()} · final: ${page.url()}`);
+        if ((!resp || resp.ok()) && /\/r\/routes\//.test(page.url())) { ok = true; break; }
+      } catch (e) {
+        console.log(`   no responde: ${e.message.split('\n')[0]}`);
+      }
+    }
+    if (!ok) throw new Error('ninguna URL respondió con una página de ruta');
     await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
     // Los precios pueden cargarse más abajo en la página
     for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, 1200); await page.waitForTimeout(700); }
@@ -94,7 +115,8 @@ for (const ruta of RUTAS) {
 
     for (const href of await page.$$eval('a[href*="/r/routes/"]', as => as.map(a => a.href))) linksRutas.add(href);
 
-    const filas = extraerPrecios(texto);
+    const { resumen, filas } = extraerPrecios(texto);
+    console.log(`  tiempo promedio: ${resumen.tiempo_min} min · distancia promedio: ${resumen.distancia_km} km`);
     if (filas.length === 0) {
       fallas++;
       console.log('!! No se encontraron precios. Líneas del texto con números grandes o "$"/"ARS":');
@@ -103,21 +125,21 @@ for (const ruta of RUTAS) {
       texto.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 80).forEach(l => console.log('   ', l.slice(0, 160)));
     }
     for (const f of filas) {
-      console.log(`  ${f.producto}: ${f.precio_min}–${f.precio_max}   [${f.contexto.slice(0, 150)}]`);
-      nuevas.push([fecha, hora, ruta.id, f.producto, f.precio_min, f.precio_max, f.moneda, f.texto]);
+      console.log(`  ${f.producto}: ${f.precio}   [${f.contexto.slice(0, 150)}]`);
+      nuevas.push([fecha, hora, ruta.id, f.producto, f.precio, 'ARS', resumen.tiempo_min, resumen.distancia_km]);
     }
   } catch (e) {
     fallas++;
     console.log(`!! Error: ${e.message}`);
   } finally {
-    await page.close();
+    await page?.close();
   }
 }
 await browser.close();
 
 if (RUTAS.some(r => !r.url)) {
   console.log('\n== Links a otras rutas encontrados (para completar rutas.json):');
-  [...linksRutas].filter(h => /aeroparque|newbery|aep|ezeiza/i.test(h)).forEach(h => console.log('   ', h));
+  [...linksRutas].filter(h => /aeroparque|newbery|aep/i.test(h)).forEach(h => console.log('   ', h));
   console.log(`   (${linksRutas.size} links de rutas en total)`);
   [...linksRutas].slice(0, 60).forEach(h => console.log('    ·', h));
 }
