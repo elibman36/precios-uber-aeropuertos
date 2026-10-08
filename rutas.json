@@ -7,11 +7,6 @@
   {
     "id": "CABA-AEP",
     "nombre": "CABA → Aeroparque (AEP)",
-    "url": [
-      "https://www.uber.com/global/es/r/routes/capital-federal-ciudad-autonomade-buenos-aires-ar-to-aep/",
-      "https://www.uber.com/global/es/r/routes/capital-federal-ciudad-autonomade-buenos-aires-ar-to-aeroparque-jorge-newbery-buenos-aires-ar/",
-      "https://www.uber.com/global/es/r/routes/capital-federal-ciudad-autonomade-buenos-aires-ar-to-aeroparque-internacional-jorge-newbery-buenos-aires-ar/",
-      "https://www.uber.com/global/es/r/routes/capital-federal-ciudad-autonomade-buenos-aires-ar-to-aeroparque-buenos-aires-ar/"
-    ]
+    "url": "https://www.uber.com/global/es/r/routes/capital-federal-ciudad-autonomade-buenos-aires-ar-to-aep/"
   }
 ]
