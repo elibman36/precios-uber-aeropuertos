@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Uber a Aeropuertos</title>
+<meta name="description" content="Evolución diaria de los precios que publica Uber para viajes CABA → Ezeiza y CABA → Aeroparque">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f4f3f0;
+    --surface-1: #fcfcfb;
+    --border: #e2e1dc;
+    --grid: #ecebe7;
+    --axis: #b9b8b2;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7a7974;
+    --chip-on: #0b0b0b;
+    --chip-on-text: #ffffff;
+    --up: #b4361f;
+    --down: #1f7a3a;
+    --ref: #8a8984;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+    --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #111110;
+      --surface-1: #1a1a19;
+      --border: #2e2e2c;
+      --grid: #262624;
+      --axis: #4a4a47;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #8f8e86;
+      --chip-on: #ffffff;
+      --chip-on-text: #0b0b0b;
+      --up: #f08a73;
+      --down: #6fcf8a;
+      --ref: #8f8e86;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+      --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #111110;
+    --surface-1: #1a1a19;
+    --border: #2e2e2c;
+    --grid: #262624;
+    --axis: #4a4a47;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --chip-on: #ffffff;
+    --chip-on-text: #0b0b0b;
+    --up: #f08a73;
+    --down: #6fcf8a;
+    --ref: #8f8e86;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 32px 16px 48px; }
+  header h1 { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin: 0; }
+  header p { color: var(--text-secondary); margin: 6px 0 0; max-width: 62ch; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 24px 0 16px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; padding: 3px; background: var(--surface-1); }
+  .seg button {
+    border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 14px;
+    padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-text); font-weight: 600; }
+  .seg button:focus-visible, .chip:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .tile .lbl { font-size: 13px; color: var(--text-secondary); }
+  .tile .val { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .tile .sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .up { color: var(--up); } .down { color: var(--down); }
+
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 14px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0 0 2px; }
+  .card .hint { font-size: 13px; color: var(--text-muted); margin: 0 0 12px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px;
+    border: 1px solid var(--border); background: transparent; color: var(--text-muted);
+    padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  }
+  .chip .sw { width: 10px; height: 10px; border-radius: 3px; background: var(--c); opacity: .35; }
+  .chip.ref .sw { background: none; border-top: 2px dashed var(--ref); height: 0; border-radius: 0; opacity: .5; }
+  .chip[aria-pressed="true"] { color: var(--text-primary); border-color: var(--axis); }
+  .chip[aria-pressed="true"] .sw { opacity: 1; }
+
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart text { fill: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .chart .lbl-end { fill: var(--text-secondary); font-size: 12px; }
+  .tip {
+    position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+    min-width: 170px; opacity: 0; transition: opacity .12s; z-index: 2;
+  }
+  .tip .d { color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; }
+  .tip .r { display: flex; align-items: center; gap: 8px; justify-content: space-between; font-variant-numeric: tabular-nums; }
+  .tip .r span:first-child { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+  .tip .sw { width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
+  .empty { color: var(--text-muted); font-size: 14px; padding: 40px 0; text-align: center; }
+
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+  th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-weight: 600; color: var(--text-secondary); font-size: 13px; }
+  td .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--c); margin-right: 8px; }
+  .table-scroll { overflow-x: auto; }
+
+  footer { color: var(--text-muted); font-size: 13px; margin-top: 24px; }
+  footer a { color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Uber de CABA a los aeropuertos</h1>
+    <p>Precios que publica Uber en sus páginas de ruta, registrados todos los días. Son valores de referencia, no la cotización en vivo de la app.</p>
+  </header>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Ruta" id="seg-ruta"></div>
+    <span class="hint" id="actualizado" style="color:var(--text-muted);font-size:13px"></span>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <section class="card">
+    <h2 id="titulo-grafico">Precio por producto</h2>
+    <p class="hint">Tocá un producto para mostrarlo u ocultarlo. La línea punteada es el promedio de la ruta.</p>
+    <div class="legend" id="legend"></div>
+    <div class="chart" id="chart"></div>
+  </section>
+
+  <section class="card">
+    <h2>Última lectura y variación</h2>
+    <p class="hint" id="hint-tabla"></p>
+    <div class="table-scroll"><table id="tabla"></table></div>
+  </section>
+
+  <footer>
+    Datos: <a href="data/precios.csv">data/precios.csv</a> · Fuente: páginas públicas de rutas de uber.com · Se actualiza todos los días a las 09:07.
+  </footer>
+</div>
+
+<script>
+const RUTAS = [
+  { id: 'CABA-EZE', nombre: 'Ezeiza (EZE)' },
+  { id: 'CABA-AEP', nombre: 'Aeroparque (AEP)' },
+];
+const PROMEDIO = 'Promedio de la ruta';
+// Color fijo por producto (sigue al producto, no a su posición)
+const COLOR = {
+  'UberX': 'var(--s1)', 'Comfort': 'var(--s2)', 'Black': 'var(--s3)', 'Taxi': 'var(--s4)',
+  'Juntos': 'var(--s5)', 'Moto': 'var(--s6)', 'Priority': 'var(--s7)', 'Wait & Save': 'var(--s8)',
+};
+const EN_GRAFICO = Object.keys(COLOR);
+const POR_DEFECTO = ['UberX', 'Comfort', 'Black', 'Taxi'];
+const MAX_VISIBLES = 4;
+
+const fmt = n => '$' + Math.round(n).toLocaleString('es-AR');
+const fmtPct = p => (p > 0 ? '+' : p < 0 ? '−' : '±') + Math.abs(p * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + '%';
+const fmtFecha = (f, largo) => new Date(f + 'T12:00:00').toLocaleDateString('es-AR', largo
+  ? { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' } : { day: 'numeric', month: 'short' });
+
+let filas = [];
+let ruta = RUTAS[0].id;
+let visibles = new Set(POR_DEFECTO);
+let verPromedio = true;
+try {
+  const g = JSON.parse(localStorage.getItem('uber-aeropuertos') || '{}');
+  if (RUTAS.some(r => r.id === g.ruta)) ruta = g.ruta;
+  if (Array.isArray(g.visibles)) visibles = new Set(g.visibles.filter(p => COLOR[p]).slice(0, MAX_VISIBLES));
+  if (typeof g.verPromedio === 'boolean') verPromedio = g.verPromedio;
+} catch (e) {}
+function guardar() {
+  try { localStorage.setItem('uber-aeropuertos', JSON.stringify({ ruta, visibles: [...visibles], verPromedio })); } catch (e) {}
+}
+
+function parseCSV(txt) {
+  const lineas = txt.trim().split(/\r?\n/);
+  const cab = lineas.shift().split(',');
+  return lineas.map(l => {
+    const campos = []; let cur = '', q = false;
+    for (const ch of l) {
+      if (ch === '"') q = !q;
+      else if (ch === ',' && !q) { campos.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    campos.push(cur);
+    const o = {}; cab.forEach((c, i) => o[c] = campos[i]);
+    o.precio = +o.precio;
+    return o;
+  }).filter(o => o.precio > 0);
+}
+
+// Una lectura por día y producto (la última del día)
+function serie(rutaId, producto) {
+  const porDia = new Map();
+  for (const f of filas) if (f.ruta === rutaId && f.producto === producto) porDia.set(f.fecha, f.precio);
+  return [...porDia].sort((a, b) => a[0] < b[0] ? -1 : 1).map(([fecha, precio]) => ({ fecha, precio }));
+}
+function fechas(rutaId) {
+  return [...new Set(filas.filter(f => f.ruta === rutaId).map(f => f.fecha))].sort();
+}
+function variacion(s, dias) {
+  if (s.length < 2) return null;
+  const ult = s[s.length - 1];
+  const limite = new Date(ult.fecha + 'T12:00:00'); limite.setDate(limite.getDate() - dias);
+  const base = [...s].reverse().find(p => new Date(p.fecha + 'T12:00:00') <= limite) || (dias === Infinity ? s[0] : null);
+  return base && base !== ult ? (ult.precio - base.precio) / base.precio : null;
+}
+
+function render() {
+  // Selector de ruta
+  const seg = document.getElementById('seg-ruta');
+  seg.innerHTML = '';
+  RUTAS.forEach(r => {
+    const b = document.createElement('button');
+    b.textContent = r.nombre; b.setAttribute('aria-pressed', r.id === ruta);
+    b.onclick = () => { ruta = r.id; guardar(); render(); };
+    seg.appendChild(b);
+  });
+
+  const fs = fechas(ruta);
+  const ultima = fs[fs.length - 1];
+  document.getElementById('actualizado').textContent = ultima ? `Última lectura: ${fmtFecha(ultima, true)} · ${fs.length} día${fs.length === 1 ? '' : 's'} registrados` : '';
+
+  // Tiles: promedio y UberX de la ruta elegida + UberX de la otra ruta
+  const tiles = document.getElementById('tiles');
+  tiles.innerHTML = '';
+  const nombreRuta = RUTAS.find(r => r.id === ruta).nombre;
+  const otra = RUTAS.find(r => r.id !== ruta);
+  [
+    { lbl: `UberX a ${nombreRuta}`, s: serie(ruta, 'UberX') },
+    { lbl: `Promedio de la ruta`, s: serie(ruta, PROMEDIO) },
+    { lbl: `Más barato a ${nombreRuta}`, barato: true },
+    { lbl: `UberX a ${otra.nombre}`, s: serie(otra.id, 'UberX') },
+  ].forEach(t => {
+    const d = document.createElement('div'); d.className = 'tile';
+    if (t.barato) {
+      const hoy = filas.filter(f => f.ruta === ruta && f.fecha === ultima && f.producto !== PROMEDIO && f.producto !== 'Courier');
+      const min = hoy.reduce((a, b) => (!a || b.precio < a.precio ? b : a), null);
+      d.innerHTML = `<div class="lbl">${t.lbl}</div><div class="val">${min ? fmt(min.precio) : '—'}</div><div class="sub">${min ? min.producto : ''}</div>`;
+    } else {
+      const ult = t.s[t.s.length - 1];
+      const v = variacion(t.s, 7) ?? variacion(t.s, Infinity);
+      const sub = v == null ? 'sin variación todavía' : `<span class="${v > 0 ? 'up' : v < 0 ? 'down' : ''}">${fmtPct(v)}</span> vs. ${variacion(t.s, 7) != null ? 'hace 7 días' : 'primera lectura'}`;
+      d.innerHTML = `<div class="lbl">${t.lbl}</div><div class="val">${ult ? fmt(ult.precio) : '—'}</div><div class="sub">${sub}</div>`;
+    }
+    tiles.appendChild(d);
+  });
+
+  // Leyenda / filtro
+  const legend = document.getElementById('legend');
+  legend.innerHTML = '';
+  const disponibles = EN_GRAFICO.filter(p => serie(ruta, p).length);
+  disponibles.forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.style.setProperty('--c', COLOR[p]);
+    b.setAttribute('aria-pressed', visibles.has(p));
+    b.innerHTML = `<span class="sw"></span>${p}`;
+    b.onclick = () => {
+      if (visibles.has(p)) visibles.delete(p);
+      else {
+        if (visibles.size >= MAX_VISIBLES) visibles.delete([...visibles][0]);
+        visibles.add(p);
+      }
+      guardar(); render();
+    };
+    legend.appendChild(b);
+  });
+  const bp = document.createElement('button');
+  bp.className = 'chip ref'; bp.setAttribute('aria-pressed', verPromedio);
+  bp.innerHTML = `<span class="sw"></span>Promedio de la ruta`;
+  bp.onclick = () => { verPromedio = !verPromedio; guardar(); render(); };
+  legend.appendChild(bp);
+
+  document.getElementById('titulo-grafico').textContent = `Precio por producto · CABA → ${nombreRuta}`;
+  dibujar(fs, disponibles.filter(p => visibles.has(p)));
+  tabla();
+}
+
+function dibujar(fs, productos) {
+  const cont = document.getElementById('chart');
+  cont.innerHTML = '';
+  const series = productos.map(p => ({ p, c: COLOR[p], s: serie(ruta, p) }));
+  if (verPromedio) series.push({ p: PROMEDIO, c: 'var(--ref)', s: serie(ruta, PROMEDIO), ref: true });
+  if (!fs.length || !series.length) { cont.innerHTML = '<div class="empty">Elegí al menos un producto.</div>'; return; }
+
+  const W = Math.max(320, cont.clientWidth || 900), H = W < 560 ? 260 : 320;
+  const m = { t: 12, r: W < 560 ? 12 : 96, b: 28, l: 64 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const todos = series.flatMap(x => x.s.map(p => p.precio));
+  let lo = Math.min(...todos), hi = Math.max(...todos);
+  const pad = (hi - lo) * 0.1 || hi * 0.1; lo = Math.max(0, lo - pad); hi += pad;
+  const paso = [500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000].find(s => (hi - lo) / s <= 5) || 100000;
+  lo = Math.floor(lo / paso) * paso; hi = Math.ceil(hi / paso) * paso;
+  const x = i => m.l + (fs.length === 1 ? iw / 2 : (i / (fs.length - 1)) * iw);
+  const y = v => m.t + ih - ((v - lo) / (hi - lo)) * ih;
+  const idx = Object.fromEntries(fs.map((f, i) => [f, i]));
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución de precios por producto">`;
+  for (let v = lo; v <= hi + 1; v += paso) {
+    svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>`;
+    svg += `<text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${fmt(v)}</text>`;
+  }
+  svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${m.t + ih}" y2="${m.t + ih}" stroke="var(--axis)" stroke-width="1"/>`;
+  const nTicks = Math.min(fs.length, W < 560 ? 4 : 7);
+  const tickIdx = fs.length === 1 ? [0] : [...new Set(Array.from({ length: nTicks }, (_, k) => Math.round(k * (fs.length - 1) / (nTicks - 1))))];
+  tickIdx.forEach(i => svg += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${fmtFecha(fs[i])}</text>`);
+
+  const finales = [];
+  series.forEach(({ p, c, s, ref }) => {
+    if (!s.length) return;
+    const pts = s.map(q => [x(idx[q.fecha]), y(q.precio)]);
+    if (pts.length > 1) svg += `<polyline points="${pts.map(q => q.join(',')).join(' ')}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"${ref ? ' stroke-dasharray="5 4"' : ''}/>`;
+    if (pts.length <= 31) pts.forEach(([px, py]) => svg += `<circle cx="${px}" cy="${py}" r="${ref ? 3 : 4}" fill="${c}" stroke="var(--surface-1)" stroke-width="2"/>`);
+    const [ex, ey] = pts[pts.length - 1];
+    finales.push({ p, ey, ex });
+  });
+  // Etiquetas directas al final de cada línea (sin solaparse)
+  if (W >= 560 && series.length <= 5) {
+    finales.sort((a, b) => a.ey - b.ey);
+    for (let i = 1; i < finales.length; i++) if (finales[i].ey - finales[i - 1].ey < 15) finales[i].ey = finales[i - 1].ey + 15;
+    finales.forEach(f => svg += `<text class="lbl-end" x="${W - m.r + 10}" y="${f.ey + 4}">${f.p === PROMEDIO ? 'Promedio' : f.p}</text>`);
+  }
+  svg += `<line id="cross" x1="0" x2="0" y1="${m.t}" y2="${m.t + ih}" stroke="var(--axis)" stroke-width="1" visibility="hidden"/>`;
+  svg += `<rect id="hit" x="${m.l - 20}" y="0" width="${iw + 40}" height="${H}" fill="transparent"/></svg>`;
+  cont.innerHTML = svg + '<div class="tip" id="tip"></div>';
+
+  // Hover: cruz vertical + tooltip con todos los productos de ese día
+  const el = cont.querySelector('svg'), tip = cont.querySelector('#tip'), cross = cont.querySelector('#cross');
+  const mover = ev => {
+    const r = el.getBoundingClientRect();
+    const px = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left) * (W / r.width);
+    const i = fs.length === 1 ? 0 : Math.max(0, Math.min(fs.length - 1, Math.round((px - m.l) / iw * (fs.length - 1))));
+    const f = fs[i];
+    cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('visibility', 'visible');
+    const filasTip = series.map(({ p, c, s }) => ({ p, c, v: (s.find(q => q.fecha === f) || {}).precio }))
+      .filter(r => r.v != null).sort((a, b) => b.v - a.v);
+    tip.innerHTML = `<div class="d">${fmtFecha(f, true)}</div>` + filasTip.map(r =>
+      `<div class="r"><span><span class="sw" style="--c:${r.c}"></span>${r.p}</span><span>${fmt(r.v)}</span></div>`).join('');
+    const sx = x(i) * (r.width / W);
+    tip.style.left = Math.min(Math.max(0, sx + 12), r.width - tip.offsetWidth) + 'px';
+    if (sx + 12 + tip.offsetWidth > r.width) tip.style.left = Math.max(0, sx - tip.offsetWidth - 12) + 'px';
+    tip.style.top = '8px'; tip.style.opacity = 1;
+  };
+  const salir = () => { tip.style.opacity = 0; cross.setAttribute('visibility', 'hidden'); };
+  el.addEventListener('mousemove', mover); el.addEventListener('mouseleave', salir);
+  el.addEventListener('touchstart', mover, { passive: true }); el.addEventListener('touchmove', mover, { passive: true });
+}
+
+function tabla() {
+  const fsR = fechas(ruta);
+  const n = fsR.length;
+  document.getElementById('hint-tabla').textContent = n > 1
+    ? `Variación del último día contra 7 días antes y contra la primera lectura (${fmtFecha(fsR[0], true)}).`
+    : 'Con más días registrados aparece acá la variación.';
+  const prods = [...new Set(filas.filter(f => f.ruta === ruta).map(f => f.producto))]
+    .map(p => ({ p, s: serie(ruta, p) }))
+    .sort((a, b) => (a.p === PROMEDIO) - (b.p === PROMEDIO) || a.s[a.s.length - 1].precio - b.s[b.s.length - 1].precio);
+  const celda = v => v == null ? '<td style="color:var(--text-muted)">—</td>' : `<td class="${v > 0 ? 'up' : v < 0 ? 'down' : ''}">${fmtPct(v)}</td>`;
+  document.getElementById('tabla').innerHTML =
+    '<thead><tr><th>Producto</th><th>Precio</th><th>vs. 7 días</th><th>vs. inicio</th></tr></thead><tbody>' +
+    prods.map(({ p, s }) => `<tr><td>${COLOR[p] ? `<span class="sw" style="--c:${COLOR[p]}"></span>` : ''}${p}</td><td>${fmt(s[s.length - 1].precio)}</td>${celda(variacion(s, 7))}${celda(variacion(s, Infinity))}</tr>`).join('') +
+    '</tbody>';
+}
+
+fetch('data/precios.csv', { cache: 'no-store' })
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+  .then(t => { filas = parseCSV(t); render(); })
+  .catch(() => { document.getElementById('chart').innerHTML = '<div class="empty">No se pudieron cargar los datos.</div>'; });
+
+let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(render, 150); });
+</script>
+</body>
+</html>

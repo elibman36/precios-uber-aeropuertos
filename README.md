@@ -7,6 +7,10 @@ Registro diario de los precios que publica Uber en sus páginas de rutas para:
 
 Todos los días a las 09:07 (hora argentina) un GitHub Action abre esas páginas, lee los precios por producto (UberX, Comfort, etc.) y los agrega a [`data/precios.csv`](data/precios.csv).
 
+## Gráfico
+
+`index.html` muestra la evolución por producto y ruta, leyendo `data/precios.csv`. Se ve publicado con GitHub Pages (Settings → Pages → Deploy from a branch → `main` / root).
+
 ## Datos
 
 | columna | descripción |

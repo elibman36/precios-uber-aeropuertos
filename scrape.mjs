@@ -70,69 +70,94 @@ const hora = ahora.toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Bu
 
 fs.mkdirSync(DEBUG_DIR, { recursive: true });
 const browser = await chromium.launch();
-const context = await browser.newContext({
+// Contexto nuevo (cookies limpias) para cada intento
+const nuevoContexto = () => browser.newContext({
   locale: 'es-AR',
   timezoneId: 'America/Argentina/Buenos_Aires',
   userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
   viewport: { width: 1366, height: 900 },
 });
+const esperar = ms => new Promise(r => setTimeout(r, ms));
+const ESPERAS_REINTENTO = [30000, 60000, 120000]; // Uber a veces responde con una verificación anti-bot
+
+// Abre la primera URL de la lista que muestre la página de la ruta. Si Uber manda a su
+// página de verificación (def.uber.com/.../challenge), espera a que se resuelva sola.
+async function abrirRuta(context, urls, rutaId) {
+  for (const url of urls) {
+    console.log(`\n== ${rutaId}: ${url}`);
+    const page = await context.newPage();
+    try {
+      const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      console.log(`HTTP ${resp?.status()} · título: ${await page.title()} · final: ${page.url().slice(0, 90)}`);
+      if (/challenge/.test(page.url())) {
+        console.log('   verificación anti-bot de Uber, esperando que se resuelva...');
+        await page.waitForURL(/\/r\/routes\//, { timeout: 45000 }).catch(() => {});
+      }
+      if ((!resp || resp.ok()) && /\/r\/routes\//.test(page.url())) return page;
+      console.log(`   no se llegó a la página de la ruta (final: ${page.url().slice(0, 90)})`);
+    } catch (e) {
+      console.log(`   no responde: ${e.message.split('\n')[0]}`);
+    }
+    await page.close();
+  }
+  return null;
+}
 
 const nuevas = [];
 const linksRutas = new Set();
 let fallas = 0;
 
-for (const ruta of RUTAS) {
+for (const [n, ruta] of RUTAS.entries()) {
   const urls = [].concat(ruta.url || []);
   if (!urls.length) {
     console.log(`\n== ${ruta.id}: sin URL configurada, se busca en los links de las otras páginas`);
     continue;
   }
-  let page;
-  try {
-    // "url" puede ser una lista: se usa la primera que responde con una página de ruta
-    let ok = false;
-    for (const url of urls) {
-      console.log(`\n== ${ruta.id}: ${url}`);
-      await page?.close();
-      page = await context.newPage(); // página nueva por intento: un error no contamina el siguiente
-      try {
-        const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        console.log(`HTTP ${resp?.status()} · título: ${await page.title()} · final: ${page.url()}`);
-        if ((!resp || resp.ok()) && /\/r\/routes\//.test(page.url())) { ok = true; break; }
-      } catch (e) {
-        console.log(`   no responde: ${e.message.split('\n')[0]}`);
+  if (n > 0) await esperar(15000); // no pedir las páginas de golpe
+
+  let filas = [], resumen = {};
+  for (let intento = 0; intento <= ESPERAS_REINTENTO.length && !filas.length; intento++) {
+    if (intento > 0) {
+      const ms = ESPERAS_REINTENTO[intento - 1];
+      console.log(`   reintento ${intento} de ${ESPERAS_REINTENTO.length} en ${ms / 1000} s`);
+      await esperar(ms);
+    }
+    const context = await nuevoContexto();
+    try {
+      const page = await abrirRuta(context, urls, ruta.id);
+      if (!page) continue;
+      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+      // Los precios pueden cargarse más abajo en la página
+      for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, 1200); await page.waitForTimeout(700); }
+
+      const texto = await page.evaluate(() => document.body.innerText);
+      fs.writeFileSync(`${DEBUG_DIR}/${ruta.id}.txt`, texto);
+      fs.writeFileSync(`${DEBUG_DIR}/${ruta.id}.html`, await page.content());
+      await page.screenshot({ path: `${DEBUG_DIR}/${ruta.id}.png`, fullPage: true }).catch(() => {});
+      for (const href of await page.$$eval('a[href*="/r/routes/"]', as => as.map(a => a.href))) linksRutas.add(href);
+
+      ({ resumen, filas } = extraerPrecios(texto));
+      console.log(`  tiempo promedio: ${resumen.tiempo_min} min · distancia promedio: ${resumen.distancia_km} km`);
+      if (!filas.length) {
+        console.log('!! No se encontraron precios. Líneas del texto con números grandes o "$"/"ARS":');
+        texto.split('\n').filter(l => /ARS|\$|\d{2}[.,]\d{3}/.test(l)).slice(0, 40).forEach(l => console.log('   ', l.trim().slice(0, 160)));
+        console.log('!! Primeras 80 líneas de la página:');
+        texto.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 80).forEach(l => console.log('   ', l.slice(0, 160)));
       }
+    } catch (e) {
+      console.log(`!! Error: ${e.message}`);
+    } finally {
+      await context.close();
     }
-    if (!ok) throw new Error('ninguna URL respondió con una página de ruta');
-    await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
-    // Los precios pueden cargarse más abajo en la página
-    for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, 1200); await page.waitForTimeout(700); }
+  }
 
-    const texto = await page.evaluate(() => document.body.innerText);
-    fs.writeFileSync(`${DEBUG_DIR}/${ruta.id}.txt`, texto);
-    fs.writeFileSync(`${DEBUG_DIR}/${ruta.id}.html`, await page.content());
-    await page.screenshot({ path: `${DEBUG_DIR}/${ruta.id}.png`, fullPage: true }).catch(() => {});
-
-    for (const href of await page.$$eval('a[href*="/r/routes/"]', as => as.map(a => a.href))) linksRutas.add(href);
-
-    const { resumen, filas } = extraerPrecios(texto);
-    console.log(`  tiempo promedio: ${resumen.tiempo_min} min · distancia promedio: ${resumen.distancia_km} km`);
-    if (filas.length === 0) {
-      fallas++;
-      console.log('!! No se encontraron precios. Líneas del texto con números grandes o "$"/"ARS":');
-      texto.split('\n').filter(l => /ARS|\$|\d{2}[.,]\d{3}/.test(l)).slice(0, 40).forEach(l => console.log('   ', l.trim().slice(0, 160)));
-      console.log('!! Primeras 80 líneas de la página:');
-      texto.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 80).forEach(l => console.log('   ', l.slice(0, 160)));
-    }
-    for (const f of filas) {
-      console.log(`  ${f.producto}: ${f.precio}   [${f.contexto.slice(0, 150)}]`);
-      nuevas.push([fecha, hora, ruta.id, f.producto, f.precio, 'ARS', resumen.tiempo_min, resumen.distancia_km]);
-    }
-  } catch (e) {
+  if (!filas.length) {
     fallas++;
-    console.log(`!! Error: ${e.message}`);
-  } finally {
-    await page?.close();
+    console.log(`!! ${ruta.id}: sin precios después de ${ESPERAS_REINTENTO.length + 1} intentos`);
+  }
+  for (const f of filas) {
+    console.log(`  ${f.producto}: ${f.precio}   [${f.contexto.slice(0, 150)}]`);
+    nuevas.push([fecha, hora, ruta.id, f.producto, f.precio, 'ARS', resumen.tiempo_min, resumen.distancia_km]);
   }
 }
 await browser.close();
