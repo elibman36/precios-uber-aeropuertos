@@ -9,3 +9,8 @@ Análisis de sostenibilidad de deuda (2025-2035) que integra la deuda pública d
 Validación: para los 8 escenarios, las hojas del Excel recalculadas en LibreOffice coinciden con `modelo.py`, con diferencias máximas de alrededor de 1e-14.
 
 Fecha de los datos: 14-oct-2026. Las fuentes están en la hoja `Fuentes`. Varias cifras vienen de prensa que cita al FMI, al BCB o al INE, así que hay que verificarlas contra los documentos originales.
+
+## Cronograma con el FMI
+
+- `Cronograma_FMI_Bolivia.xlsx`: desembolsos, repagos y cargos del SAF 2026-2029 (DEG 1.369 mm). Tiene tramos editables en `Supuestos`, una grilla mensual de oct-2026 a dic-2039 y un resumen anual en DEG y USD. Lo genera `python cronograma_fmi.py`.
+- Validación: el Excel recalculado coincide con un cálculo independiente en Python, con diferencias de alrededor de 1e-12.
